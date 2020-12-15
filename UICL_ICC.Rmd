@@ -1,0 +1,93 @@
+---
+title: "UICL_ICC"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, warning=FALSE}
+library(dplyr)
+spss <- foreign::read.spss("~/Documents/oleary/Complete_Dataset_fix_missing_values_fixed_MJ_TB_Binge_FU_addAge.sav", to.data.frame = T, stringsAsFactors = F)
+```
+
+age, gender, binge status, NEO, UPPS, BIS, SSS, and all the behavioral tasks (DDT, BART, cog task)
+
+```{r}
+demo <- c("Subject_ID", "age_time1", "age_time2", "Sex", "BingeGroup_5cat")
+neo <- grep(paste(c("V1_NEO", "V2_NEO"),collapse="|"), names(spss), value=TRUE)
+upps <- grep(paste(c("V1_UPPSP", "V2_UPPSP"),collapse="|"), names(spss), value=TRUE)
+bis <- grep(paste(c("V1_BIS", "V2_BIS"),collapse="|"), names(spss), value=TRUE)
+sss <- grep(paste(c("V1_SSS", "V2_SSS"),collapse="|"), names(spss), value=TRUE)
+
+behav <- grep(paste(c("DDT", "BART"),collapse="|"), names(spss), value=TRUE)
+
+neuropsy <- grep(paste(c("StroopEffect", "DigitSpan_Correct_Forward", "DigitSpan_Correct_Reverse", "DigitSpan_Total_Correct", "LetterFluency_Total_In_Set", "Elapsed_Time_Trails_BminusA"),collapse="|"), names(spss), value=TRUE)[-c(9,10,16,18)]
+
+```
+
+
+```{r}
+# 122 subjects came back, 3 didn't have imaging data (3084, 3102, 3198) --> 119 with rest data
+icc.short <- spss[c(demo, neo, upps, bis, sss, behav, neuropsy)] %>% filter(!is.na(age_time2))
+
+
+######################### some V1 variables need to be renamed #########################
+oldname <- c("BART_PumpsAvgAdj",                                     
+ "DDT_K_Values",                                         
+ "StroopEffect_ColorSquare",                             
+ "StroopEffect_Non_ColorWord",                           
+ "DigitSpan_Correct_Forward",                            
+ "DigitSpan_Correct_Reverse",                            
+ "DigitSpan_Total_Correct",                              
+ "LetterFluency_Total_In_Set")
+newname <- unname(sapply(oldname, function(x) paste0("V1_", x)))
+colnames(icc.short)[colnames(icc.short) %in% oldname] <- newname
+
+
+################################## Time 1 Data ##################################
+
+icc.short.t1 <- icc.short[c("Subject_ID", "age_time1", "Sex", "BingeGroup_5cat",
+            grep("V1_", names(icc.short), value = T))] %>%
+  rename(id=Subject_ID, age=age_time1, group=BingeGroup_5cat)
+names(icc.short.t1) <- sub("V1_", "", names(icc.short.t1))
+
+
+################################## Time 2 Data ##################################
+
+icc.short.t2 <- icc.short[c("Subject_ID", "age_time2", "Sex", "BingeGroup_5cat",
+            grep("V2_", names(icc.short), value = T))] %>%
+  rename(id=Subject_ID, age=age_time2, group=BingeGroup_5cat)
+names(icc.short.t2) <- sub("V2_", "", names(icc.short.t2))
+# make sure order of the columns match between T1 and T2 data
+icc.short.t2 <- icc.short.t2[names(icc.short.t2)[order(match(names(icc.short.t2), names(icc.short.t1)))]]
+#test
+names(icc.short.t1)==names(icc.short.t2)
+
+write.table(icc.short, row.names = F, col.names = T, sep = "\t", quote = F, 
+            file = "~/Documents/oleary/UICL_ICC.txt")
+```
+
+### ICC interpretation
+
+below 0.50: poor  
+between 0.50 and 0.75: moderate  
+between 0.75 and 0.90: good  
+above 0.90: excellent  
+
+```{r}
+icc_func <- function(x, y){
+  irr::icc(cbind(x, y), model = "oneway", type = "consistency", unit = "single", r0 = 0, 
+           conf.level = 0.95)$value
+}
+
+
+for (i in 5:41) {
+  print(paste0("ICC of ", names(icc.short.t1)[i],
+              ": ", icc_func(icc.short.t1[i], icc.short.t2[i])))
+}
+```
+
+No difference in task versus self-report ICC values
